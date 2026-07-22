@@ -1,5 +1,19 @@
+# Salidas de compilación e IDEs (Ya los tenés)
 build/
 .gradle/
 .git/
 .idea/
 .vscode/
+
+# Archivos de log y temporales
+*.log
+*.tmp
+
+# Archivos del sistema operativo
+.DS_Store
+Thumbs.db
+
+# Evita copiar el propio Dockerfile o configuraciones de CI/CD adentro del contenedor
+Dockerfile*
+.github/
+README.md

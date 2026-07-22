@@ -1,0 +1,82 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main  # Se ejecuta cuando hacés push a la rama principal
+  pull_request:
+    branches:
+      - main  # Se ejecuta cuando abrís o actualizás un PR hacia main
+
+jobs:
+  # =======================================================
+  # ETAPA 1: Integración Continua (Compilación y Pruebas)
+  # =======================================================
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout del código
+        uses: actions/checkout@v4
+
+      - name: Configurar Java (JDK 25)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '25'
+          cache: 'gradle' # Guarda y restaura automáticamente el caché de Gradle para los tests
+
+      - name: Dar permisos de ejecución a gradlew
+        run: chmod +x gradlew
+
+      - name: Compilar y ejecutar pruebas
+        run: ./gradlew test --no-daemon
+
+  # =======================================================
+  # ETAPA 2: Despliegue Continuo (Construcción y publicación)
+  # =======================================================
+  docker-publish:
+    needs: test-and-build # OBLIGATORIO: Solo se ejecuta si la etapa de pruebas fue exitosa
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' # Solo publica la imagen en push a main
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write # Permiso necesario para publicar en GHCR
+
+    steps:
+      - name: Checkout del código
+        uses: actions/checkout@v4
+
+      # Habilita el motor Docker Buildx (necesario para usar la caché de GitHub Actions)
+      - name: Configurar Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Iniciar sesión en GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configurar metadatos para la imagen (tags y labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=
+
+      - name: Construir y publicar imagen Docker con Caché
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # -----------------------------------------------------------------
+          # Configuración de caché persistente entre ejecuciones en GitHub Actions
+          # -----------------------------------------------------------------
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
